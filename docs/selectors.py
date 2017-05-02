@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  __init__.py
+#  selectors.py
 #  
 #  Copyright 2017 notna <notna@apparat.org>
 #  
@@ -22,7 +22,19 @@
 #  
 #  
 
-from .net import *
-from .registry import *
-from .constants import *
-from .version import *
+class _Mock(object):
+    def __init__(self, *args,**kwargs):
+        pass
+
+    def __getattr__(self, name):
+        return Mock()
+    def __call__(self,*args,**kwargs):
+        return Mock()
+    def __getitem__(self,*args,**kwargs):
+        return Mock()
+    def __setitem__(self,*args,**kwargs):
+        pass
+    def __in__(self,*args,**kwargs):
+        pass
+
+DefaultSelector = _Mock()

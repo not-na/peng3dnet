@@ -23,7 +23,7 @@
 #  
 
 
-__all__ = ["VERSION","RELEASE"]
+__all__ = ["VERSION","RELEASE","PROTOVERSION"]
 
 VERSION = "0.1.0a1"
 

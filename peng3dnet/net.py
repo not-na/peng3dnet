@@ -22,12 +22,16 @@
 #  
 #  
 
+__all__ = [
+    "Server","ClientOnServer",
+    "Client",
+    ]
+
 import sys
 import time
 import threading
 import socket
 import selectors
-import struct
 
 if sys.version_info.major==2:
     import Queue
@@ -42,30 +46,8 @@ except ImportError:
     import umsgpack as msgpack
 
 from . import version
-
-# Maximum representable by prefix
-# Equals roughly 2.4 Gigabytes
-MAX_PACKETLENGTH = 2**32-1
-
-COMPRESS_THRESHOLD = 8*1024
-COMPRESS_LEVEL = 6
-
-# Length
-STRUCT_LENGTH32 = struct.Struct("!I")
-# Packet number, compressed
-STRUCT_HEADER = struct.Struct("!IH")
-
-STATE_INIT = 0
-STATE_HANDSHAKE_WAIT1 = 1
-STATE_HANDSHAKE_WAIT2 = 2
-STATE_ACTIVE = 64
-STATE_CLOSED = 128
-
-FLAG_COMPRESSED =       1 << 0
-FLAG_ENCRYPTED_AES =    1 << 1
-
-SIDE_CLIENT = 0
-SIDE_SERVER = 1
+from . import packet
+from .constants import *
 
 class Server(object):
     def __init__(self,addr,clientcls=None):
@@ -699,6 +681,3 @@ class Client(object):
         pass
     def on_send(self,ptype,msg):
         pass
-
-# Imported late to avoid circular dependency
-from . import registry

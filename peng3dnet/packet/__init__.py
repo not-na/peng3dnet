@@ -22,7 +22,12 @@
 #  
 #  
 
-from .. import net
+__all__ = [
+    "Packet", "SmartPacket",
+    "PrintPacket",
+    ]
+
+from ..constants import *
 
 class Packet(object):
     def __init__(self,reg,peer,obj=None):
@@ -39,20 +44,20 @@ class Packet(object):
         pass
 
 class SmartPacket(Packet):
-    state = net.STATE_ACTIVE
+    state = STATE_ACTIVE
     side = None
     def _receive(self,msg,cid=None):
-        if cid is None and (self.side is None or self.side == net.SIDE_CLIENT):
+        if cid is None and (self.side is None or self.side == SIDE_CLIENT):
             if self.peer.remote_state == self.state:
                 self.receive(msg,cid)
-        elif cid is not None and (self.side is None or self.side == net.SIDE_SERVER):
+        elif cid is not None and (self.side is None or self.side == SIDE_SERVER):
             if self.peer.clients[cid].state == self.state:
                 self.receive(msg,cid)
     def _send(self,msg,cid=None):
-        if cid is None and (self.side is None or self.side == net.SIDE_CLIENT):
+        if cid is None and (self.side is None or self.side == SIDE_CLIENT):
             if self.peer.remote_state == self.state:
                 self.send(msg,cid)
-        elif cid is not None and (self.side is None or self.side == net.SIDE_SERVER):
+        elif cid is not None and (self.side is None or self.side == SIDE_SERVER):
             if self.peer.clients[cid].state == self.state:
                 self.send(msg,cid)
 

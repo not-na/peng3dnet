@@ -22,6 +22,11 @@
 #  
 #  
 
+__all__ = [
+    "BaseRegistry",
+    "PacketRegistry",
+    ]
+
 import threading
 
 import bidict

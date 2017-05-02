@@ -22,13 +22,18 @@
 #  
 #  
 
+__all__ = [
+    "HandshakePacket", "HandshakeAcceptPacket",
+    "CloseConnectionPacket",
+    ]
+
 from . import Packet, SmartPacket
-from .. import net
+from ..constants import *
 from .. import version
 
 class HandshakePacket(SmartPacket):
-    state = net.STATE_INIT
-    side = net.SIDE_CLIENT
+    state = STATE_INIT
+    side = SIDE_CLIENT
     def receive(self,msg,cid=None):
         if msg["version"]!=version.VERSION:
             pass # for now...
@@ -50,8 +55,8 @@ class HandshakePacket(SmartPacket):
         self.peer.on_handshake_complete()
 
 class HandshakeAcceptPacket(SmartPacket):
-    state = net.STATE_HANDSHAKE_WAIT1
-    side = net.SIDE_SERVER
+    state = STATE_HANDSHAKE_WAIT1
+    side = SIDE_SERVER
     def receive(self,msg,cid):
         if msg["success"]:
             self.peer.clients[cid].on_handshake_complete()
