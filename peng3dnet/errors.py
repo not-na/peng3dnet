@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  __init__.py
+#  errors.py
 #  
 #  Copyright 2017 notna <notna@apparat.org>
 #  
@@ -22,9 +22,13 @@
 #  
 #  
 
-from .net import *
-from .registry import *
-from .constants import *
-from .version import *
-from .util import *
-from .errors import *
+__all__ = [
+    "InvalidAddressError","InvalidPortError","InvalidHostError",
+    ]
+
+class InvalidAddressError(ValueError):pass
+
+class InvalidPortError(InvalidAddressError):pass
+class InvalidHostError(InvalidAddressError):pass
+
+class UnsupportedAddressError(NotImplementedError):pass

@@ -1,0 +1,11 @@
+dependencies:
+   pre:
+     - pip install tox
+
+test:
+   override:
+     - tox -- --junitxml=$CIRCLE_TEST_REPORTS/junit/junit.xml --x-display=$DISPLAY -v
+
+machine:
+   python:
+      version: 3.5.0

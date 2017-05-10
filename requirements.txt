@@ -2,6 +2,11 @@ appdirs==1.4.3
 bidict==0.13.1
 msgpack-python==0.4.8
 packaging==16.8
+pluggy==0.4.0
+py==1.4.33
 pyparsing==2.2.0
+pytest==3.0.7
 six==1.10.0
 sphinx-rtd-theme==0.2.4
+tox==2.7.0
+virtualenv==15.1.0
