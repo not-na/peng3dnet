@@ -27,6 +27,11 @@ import threading
 
 import pytest
 
+os.environ["DISPLAY"]=":0"
+import pyglet
+pyglet.options["shadow_window"]=False
+import peng3d
+
 import peng3dnet
 
 EVENT_RECV = 1 << 0
