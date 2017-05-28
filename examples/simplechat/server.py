@@ -57,16 +57,8 @@ def main(args):
     if len(args)!=2:
         print("Not enough arguments!")
         sys.exit(1)
-    try:
-        port = int(args[1])
-    except Exception:
-        print("Invalid port number!")
-        sys.exit(1)
-    if not 0<port<65536:
-        print("Port number must be between 1 and 65535")
-        sys.exit(1)
     
-    server = ChatServer(["0.0.0.0",port],clientcls=ClientOnChatServer)
+    server = ChatServer(addr=args[1],clientcls=ClientOnChatServer)
     
     server.register_packet("chat:message",common.MessagePacket(server.registry,server))
     

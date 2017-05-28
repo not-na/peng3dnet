@@ -33,31 +33,10 @@ import common
 
 def main(args):
     global run
-    if len(args)==2:
-        addr = args[1]
-        if len(addr.split(":"))!=2:
-            print("Address must be an IPv4 Address of format '<host or ip>:<port>'")
-            return 1
-        address = addr.split(":")[0]
-        port = addr.split(":")[1]
-        try:
-            port = int(port)
-        except Exception:
-            print("Invalid port number!")
-            return 1
-    else:
-        address = input("Server Address (without port): ")
-        if address=="":
-            print("Address may not be empty")
-            return 1
-        port = input("Port: ")
-        try:
-            port = int(port)
-        except Exception:
-            print("Invalid port number!")
-            return 1
+    if len(args)!=2:
+        print("Exactly one argument accepted")
     
-    client = peng3dnet.net.Client([address,port])
+    client = peng3dnet.net.Client(addr=args[1])
     
     client.register_packet("echo:echo",common.EchoPacket(client.registry,client))
     client.register_packet("echo:ping",common.PingPacket(client.registry,client))

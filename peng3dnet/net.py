@@ -29,6 +29,7 @@ __all__ = [
 
 import sys
 import time
+import struct
 import threading
 import socket
 import selectors
@@ -45,12 +46,39 @@ try:
 except ImportError:
     import umsgpack as msgpack
 
+import peng3d
+
 from . import version
 from . import packet
+from . import util
+from . import registry
 from .constants import *
 
+STRUCT_HEADER = struct.Struct(STRUCT_FORMAT_HEADER)
+STRUCT_LENGTH32 = struct.Struct(STRUCT_FORMAT_LENGTH32)
+
 class Server(object):
-    def __init__(self,addr,clientcls=None):
+    def __init__(self,peng=None,addr=None,clientcls=None,cfg={}):
+        if peng is None:
+            self.cfg = peng3d.config.Config(cfg,DEFAULT_CONFIG)
+        else:
+            ncfg = {}
+            ncfg.update(DEFAULT_CONFIG)
+            ncfg.update(cfg)
+            self.cfg = peng3d.config.Config(ncfg,peng.cfg)
+        if addr is not None:
+            addr = util.normalize_addr_socketstyle(addr,self.cfg["net.server.addr.port"])
+            self.cfg["net.server.addr.host"]=addr[0]
+            self.cfg["net.server.addr.port"]=addr[1]
+        elif self.cfg["net.server.addr"] is None:
+            addr = util.normalize_addr_socketstyle(self.cfg["net.server.addr.host"],self.cfg["net.server.addr.port"])
+        else:
+            addr = util.normalize_addr_socketstyle(self.cfg["net.server.addr"],self.cfg["net.server.addr.port"])
+        if self.cfg["net.events.enable"]=="auto":
+            self.cfg["net.events.enable"]=peng is not None
+        
+        self.peng = peng
+        
         self.addr = addr
         
         self.is_client = False
@@ -101,6 +129,8 @@ class Server(object):
             self.register_packet("peng3dnet:internal.handshake.accept",internal.HandshakeAcceptPacket(self.registry,self),2)
             
             self.register_packet("peng3dnet:internal.closeconn",internal.CloseConnectionPacket(self.registry,self),16)
+            
+            self.sendEvent("peng3dnet:server.initialize",{})
     
     def bind(self):
         if self._is_bound:
@@ -119,6 +149,8 @@ class Server(object):
             self.sock.setblocking(False)
             
             self._is_bound = True
+            
+            self.sendEvent("peng3dnet:server.bind",{"addr":tuple(self.addr)})
     
     def runBlocking(self,selector=selectors.DefaultSelector):
         if self._is_started:
@@ -136,6 +168,7 @@ class Server(object):
             self.selector.register(self._irqsend,selectors.EVENT_READ,[self._client_ready,None])
             
             self._is_started = True
+            self.sendEvent("peng3dnet:server.start",{})
         
         while self.run:
             events = self.selector.select()
@@ -152,11 +185,13 @@ class Server(object):
         self._run_thread.start()
     def stop(self):
         self.run = False
+        self.sendEvent("peng3dnet:server.stop",{"reason":"method"})
         self.interrupt()
     def interrupt(self):
         # simply wakes the main loop up
         # used to force a check if the system is still running
         self._irqsend.sendall(b"wake up!")
+        self.sendEvent("peng3dnet:server.interrupt",{})
     
     def shutdown(self,join=True,timeout=0,reason="servershutdown"):
         for cid in self.clients:
@@ -171,6 +206,7 @@ class Server(object):
             while len(self.clients)>0 and time.time()-t<timeout:
                 time.sleep(0.01)
         self.stop()
+        self.sendEvent("peng3dnet:server.shutdown",{"reason":reason,"join":join,"timeout":timeout})
         if join:
             self.join(timeout-(time.time()-t))
     def join(self,timeout=None):
@@ -199,6 +235,7 @@ class Server(object):
         
         client.on_connect()
         self.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.registry.reg_int_str._inv)},client.cid)
+        self.sendEvent("peng3dnet:server.connection.accept",{"sock":conn,"addr":addr,"client":client,"cid":client.cid})
     
     def _client_ready(self,conn,mask,data):
         if (mask & selectors.EVENT_READ):
@@ -267,6 +304,7 @@ class Server(object):
     
     def send_message(self,ptype,data,cid):
         self.clients[cid].on_send(ptype,data)
+        self.sendEvent("peng3dnet:server.connection.send",{"client":self.clients[cid],"pid":ptype,"data":data})
         self.registry.getObj(ptype)._send(data,cid)
         
         data = msgpack.dumps(data)
@@ -342,6 +380,7 @@ class Server(object):
                     client = self.clients[cid]
                     self.registry.getObj(pid)._receive(msg,cid)
                     client.on_receive(pid,msg)
+                    self.sendEvent("peng3dnet:server.connection.recv",{"client":client,"pid":pid,"msg":msg})
                 except Exception:
                     import traceback;traceback.print_exc()
                 n+=1
@@ -355,6 +394,13 @@ class Server(object):
         self._process_thread = threading.Thread(name="peng3dnet process Thread",target=self.process_forever)
         self._process_thread.daemon = True
         self._process_thread.start()
+    
+    def sendEvent(self,event,data={}):
+        if self.cfg["net.events.enable"]:
+            if isinstance(data,dict):
+                data["peng"]=self.peng
+                data["server"]=self.server
+            self.peng.sendEvent(event,data)
 
 class ClientOnServer(object):
     def __init__(self,server,conn,addr,cid):
@@ -375,6 +421,7 @@ class ClientOnServer(object):
         self.state = STATE_HANDSHAKE_WAIT1
     
     def close(self,reason=None):
+        self.server.sendEvent("peng3dnet:server.connection.close",{"client":self,"reason":reason})
         self.state = STATE_CLOSED
         try:
             self.server.selector.unregister(self.conn)
@@ -388,6 +435,7 @@ class ClientOnServer(object):
             self.on_close(reason)
     
     def on_handshake_complete(self):
+        self.server.sendEvent("peng3dnet:server.connection.handshakecomplete",{"client":self})
         self.state = STATE_ACTIVE
     def on_close(self,reason=None):
         pass
@@ -399,7 +447,27 @@ class ClientOnServer(object):
         pass
         
 class Client(object):
-    def __init__(self,addr):
+    def __init__(self,peng=None,addr=None,cfg={}):
+        if peng is None:
+            self.cfg = peng3d.config.Config(cfg,DEFAULT_CONFIG)
+        else:
+            ncfg = {}
+            ncfg.update(DEFAULT_CONFIG)
+            ncfg.update(cfg)
+            self.cfg = peng3d.config.Config(ncfg,peng.cfg)
+        if addr is not None:
+            addr = util.normalize_addr_socketstyle(addr,self.cfg["net.client.addr.port"])
+            self.cfg["net.client.addr.host"]=addr[0]
+            self.cfg["net.client.addr.port"]=addr[1]
+        elif self.cfg["net.client.addr"] is None:
+            addr = util.normalize_addr_socketstyle(self.cfg["net.client.addr.host"],self.cfg["net.client.addr.port"])
+        else:
+            addr = util.normalize_addr_socketstyle(self.cfg["net.client.addr"],self.cfg["net.client.addr.port"])
+        if self.cfg["net.events.enable"]=="auto":
+            self.cfg["net.events.enable"]=peng is not None
+        
+        self.peng = peng
+        
         self.addr = addr
         
         self.is_client = True
@@ -454,6 +522,8 @@ class Client(object):
             self.register_packet("peng3dnet:internal.handshake.accept",internal.HandshakeAcceptPacket(self.registry,self),2)
             
             self.register_packet("peng3dnet:internal.closeconn",internal.CloseConnectionPacket(self.registry,self),16)
+            
+            self.sendEvent("peng3dnet:client.initialize",{})
     
     def connect(self):
         if self._is_connected:
@@ -468,6 +538,8 @@ class Client(object):
             self.sock.setblocking(True)
             
             self._is_connected = True
+            
+            self.sendEvent("peng3dnet:client.connect",{"addr":tuple(self.addr),"sock":self.sock})
     
     def runBlocking(self,selector=selectors.DefaultSelector):
         if self._is_started:
@@ -485,6 +557,8 @@ class Client(object):
             self.selector.register(self._irqsend,selectors.EVENT_READ,[self._sock_ready,None])
             
             self._is_started = True
+            
+            self.sendEvent("peng3dnet:client.start",{})
         
         while self.run:
             events = self.selector.select()
@@ -500,11 +574,13 @@ class Client(object):
         self._run_thread.start()
     def stop(self):
         self.run = False
+        self.sendEvent("peng3dnet:client.stop",{"reason":"method"})
         self.interrupt()
     def interrupt(self):
         # simply wakes the main loop up
         # used to force a check if the system is still running
         self._irqsend.sendall(b"wake up!")
+        self.sendEvent("peng3dnet:client.interrupt",{})
     
     def _sock_ready(self,sock,mask,data):
         if sock==self._irqrecv:
@@ -536,6 +612,7 @@ class Client(object):
     
     def send_message(self,ptype,data,cid=None):
         self.on_send(ptype,data)
+        self.sendEvent("peng3dnet:client.send",{"pid":ptype,"data":data})
         self.registry.getObj(ptype)._send(data)
         
         data = msgpack.dumps(data)
@@ -632,6 +709,7 @@ class Client(object):
                 # No error catching, for better debugging
                 self.registry.getObj(pid)._receive(msg)
                 self.on_receive(pid,msg)
+                self.sendEvent("peng3dnet:client.recv",{"pid":pid,"msg":msg})
                 n+=1
         return n
     def process_forever(self):
@@ -657,6 +735,7 @@ class Client(object):
             self._process_thread.join()
     
     def close(self,reason=None):
+        self.sendEvent("peng3dnet:client.close",{"reason":reason})
         try:
             sock.close()
         except Exception:
@@ -672,6 +751,7 @@ class Client(object):
     
     # Server callbacks
     def on_handshake_complete(self):
+        self.sendEvent("peng3dnet:client.handshakecomplete",{})
         self.remote_state = STATE_ACTIVE
     def on_connect(self):
         pass
@@ -681,3 +761,10 @@ class Client(object):
         pass
     def on_send(self,ptype,msg):
         pass
+    
+    def sendEvent(self,event,data):
+        if self.cfg["net.events.enable"]:
+            if isinstance(data,dict):
+                data["peng"]=self.peng
+                data["client"]=self
+            self.peng.sendEvent(event,data)

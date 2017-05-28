@@ -36,18 +36,7 @@ def main(args):
     else:
         addr = input("Server address:")
     
-    if len(addr.split(":"))!=2:
-        print("Address must be an IPv4 Address of format '<host or ip>:<port>'")
-        return 1
-    address = addr.split(":")[0]
-    port = addr.split(":")[1]
-    try:
-        port = int(port)
-    except Exception:
-        print("Invalid port number!")
-        return 1
-    
-    client = peng3dnet.net.Client([address,port])
+    client = peng3dnet.net.Client(addr=addr)
     
     client.register_packet("chat:message",common.MessagePacket(client.registry,client))
     

@@ -39,16 +39,8 @@ def main(args):
     if len(args)!=2:
         print("Not enough arguments!")
         sys.exit(1)
-    try:
-        port = int(args[1])
-    except Exception:
-        print("Invalid port number!")
-        sys.exit(1)
-    if not 0<port<65536:
-        print("Port number must be between 1 and 65535")
-        sys.exit(1)
     
-    server = peng3dnet.net.Server(["0.0.0.0",port],clientcls=ClientOnEchoServer)
+    server = peng3dnet.net.Server(addr=args[1],clientcls=ClientOnEchoServer)
     
     server.register_packet("echo:echo",common.EchoPacket(server.registry,server))
     server.register_packet("echo:ping",common.PingPacket(server.registry,server))

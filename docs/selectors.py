@@ -22,19 +22,24 @@
 #  
 #  
 
-class _Mock(object):
-    def __init__(self, *args,**kwargs):
-        pass
+import sys
 
-    def __getattr__(self, name):
-        return Mock()
-    def __call__(self,*args,**kwargs):
-        return Mock()
-    def __getitem__(self,*args,**kwargs):
-        return Mock()
-    def __setitem__(self,*args,**kwargs):
-        pass
-    def __in__(self,*args,**kwargs):
-        pass
+if sys.version_info.major==2:
+    class _Mock(object):
+        def __init__(self, *args,**kwargs):
+            pass
+    
+        def __getattr__(self, name):
+            return Mock()
+        def __call__(self,*args,**kwargs):
+            return Mock()
+        def __getitem__(self,*args,**kwargs):
+            return Mock()
+        def __setitem__(self,*args,**kwargs):
+            pass
+        def __in__(self,*args,**kwargs):
+            pass
 
-DefaultSelector = _Mock()
+    DefaultSelector = _Mock()
+else:
+    from selectors import *

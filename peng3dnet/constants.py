@@ -25,7 +25,7 @@
 __all__ = [
     "MAX_PACKETLENGTH",
     "COMPRESS_THRESHOLD","COMPRESS_LEVEL",
-    "STRUCT_LENGTH32","STRUCT_HEADER",
+    "STRUCT_FORMAT_LENGTH32","STRUCT_FORMAT_HEADER",
     
     "STATE_INIT",
     "STATE_HANDSHAKE_WAIT1","STATE_HANDSHAKE_WAIT2",
@@ -34,8 +34,9 @@ __all__ = [
     "FLAG_COMPRESSED","FLAG_ENCRYPTED_AES",
     
     "SIDE_CLIENT","SIDE_SERVER",
+    
+    "DEFAULT_CONFIG"
     ]
-import struct
 
 # Maximum representable by prefix
 # Equals roughly 2.4 Gigabytes
@@ -45,9 +46,9 @@ COMPRESS_THRESHOLD = 8*1024
 COMPRESS_LEVEL = 6
 
 # Length
-STRUCT_LENGTH32 = struct.Struct("!I")
+STRUCT_FORMAT_LENGTH32 = "!I"
 # Packet number, compressed
-STRUCT_HEADER = struct.Struct("!IH")
+STRUCT_FORMAT_HEADER = "!IH"
 
 STATE_INIT = 0
 STATE_HANDSHAKE_WAIT1 = 1
@@ -60,3 +61,28 @@ FLAG_ENCRYPTED_AES =    1 << 1
 
 SIDE_CLIENT = 0
 SIDE_SERVER = 1
+
+DEFAULT_CONFIG = {
+    "net.server.addr":None,
+    "net.server.addr.host":"0.0.0.0",
+    "net.server.addr.port":8080,
+    
+    "net.client.addr":None,
+    "net.client.addr.host":"localhost",
+    "net.client.addr.port":8080,
+    
+    "net.compress.enable":True,
+    "net.compress.threshold":8*1024, # 8KiB
+    "net.compress.level":6,
+    
+    "net.encrypt.enabled":False,
+    # TODO
+    
+    "net.ssl.enabled":True,
+    "net.ssl.force":True,
+    "net.ssl.server.certfile":None,
+    "net.ssl.server.keyfile":None,
+    "net.ssl.client.check_hostname":True,
+    
+    "net.events.enable":"auto",
+    }

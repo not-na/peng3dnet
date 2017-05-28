@@ -29,6 +29,9 @@ Contents:
    examples/simplechat
    
    api/peng3dnet
+   
+   configoption
+   events
 
 
 
