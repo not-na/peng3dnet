@@ -29,15 +29,18 @@ import peng3dnet
 
 import common
 
+MAX_USERS = 128
+
 class ClientOnChatServer(peng3dnet.net.ClientOnServer):
     def on_handshake_complete(self):
         super().on_handshake_complete()
         self.nickname="anonymous"
-        self.server.broadcast("User with IP Address %s joined the server"%(self.conn.getpeername()[0]),"server",internal=True,exclude_list=[self.cid])
+        print("Handshake with IP %s complete"%self.conn.getpeername()[0])
+        #self.server.broadcast("User with IP Address %s joined the server"%(self.conn.getpeername()[0]),"server",internal=True,exclude_list=[self.cid])
     def on_close(self,reason=None):
         self.server.broadcast("%s disconnected (%s)"%(getattr(self,"nickname","anonymous"),reason if reason is not None else "unknown"),"server",True)
 
-class ChatServer(peng3dnet.net.Server):
+class ChatServer(peng3dnet.ext.ping.PingableServerMixin,peng3dnet.net.Server):
     def broadcast(self,msg,origin,internal=False,private=False,timestamp=None,exclude_list=[]):
         if not self.is_server:
             raise RuntimeError("Cannot broadcast from client")
@@ -52,6 +55,15 @@ class ChatServer(peng3dnet.net.Server):
         for client in self.clients:
             if client not in exclude_list:
                 self.send_message("chat:message",data,client)
+    
+    def getPingData(self,msg,cid):
+        users = [u for u in self.clients.values() if getattr(u,"nickname","anonymous")!="anonymous"]
+        return {
+            "usercount":len(users),
+            "usersample":[u.nickname for u in users[:10]],
+            "maxusers":MAX_USERS,
+            "couldjoin":True, # dummy
+            }
 
 def main(args):
     if len(args)!=2:
@@ -60,7 +72,11 @@ def main(args):
     
     server = ChatServer(addr=args[1],clientcls=ClientOnChatServer)
     
+    server.cfg["net.ssl.server.certfile"]="testcerts/cert.pem"
+    server.cfg["net.ssl.server.keyfile"]="testcerts/key.pem"
+    
     server.register_packet("chat:message",common.MessagePacket(server.registry,server))
+    server.register_packet("chat:join",common.JoinPacket(server.registry,server))
     
     server.runAsync()
     server.process_forever()

@@ -38,8 +38,11 @@ def main(args):
     
     client = peng3dnet.net.Client(addr=addr)
     
-    client.register_packet("chat:message",common.MessagePacket(client.registry,client))
+    client.cfg["net.ssl.server.certfile"]="testcerts/cert.pem"
+    client.cfg["net.ssl.server.keyfile"]="testcerts/key.pem"
     
+    client.register_packet("chat:message",common.MessagePacket(client.registry,client))
+    client.register_packet("chat:join",common.JoinPacket(client.registry,client))
     
     def on_close(reason=None):
         global run
@@ -51,6 +54,12 @@ def main(args):
     client.runAsync()
     client.process_async()
     
+    nickname = input("Nickname: ")
+    if nickname == "":
+        nickname = "anonymous"
+    client.wait_for_connection(10)
+    client.send_message("chat:join",{"nickname":nickname})
+    
     print("Type '/help' for command help")
     
     run = True
@@ -60,19 +69,25 @@ def main(args):
         except KeyboardInterrupt:
             break
         if run == False:
-            # if connection is closed
+            # if connection is closed while waiting for input
             return
         
         if s in ["/quit","/stop"]:
             run = False
-            if s!="/stop":
+            if s=="/quit":
                 client.close_connection(reason="userrequest")
             elif s=="/stop":
                 client.send_message("chat:message",{"message":"/stop"})
             client.join()
             continue
         
-        client.send_message("chat:message",{"message":s,"timestamp":time.time()})
+        try:
+            client.send_message("chat:message",{"message":s,"timestamp":time.time()})
+        except Exception:
+            print("Error while sending message:")
+            import traceback;traceback.print_exc()
+            print("Try reconnecting, that may solve this problem")
+            run = False
 
 if __name__ == '__main__':
     import sys

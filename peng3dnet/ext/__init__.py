@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  errors.py
+#  __init__.py
 #  
 #  Copyright 2017 notna <notna@apparat.org>
 #  
@@ -22,18 +22,5 @@
 #  
 #  
 
-__all__ = [
-    "InvalidAddressError","InvalidPortError","InvalidHostError",
-    ]
+from . import ping
 
-class InvalidAddressError(ValueError):pass
-
-class InvalidPortError(InvalidAddressError):pass
-class InvalidHostError(InvalidAddressError):pass
-
-class UnsupportedAddressError(NotImplementedError):pass
-
-class InvalidSmartPacketAction(ValueError):pass
-
-class TimedOutError(RuntimeError):pass
-class FailedPingError(TimedOutError):pass

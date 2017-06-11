@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  __init__.py
+#  conntypes.py
 #  
 #  Copyright 2017 notna <notna@apparat.org>
 #  
@@ -22,11 +22,26 @@
 #  
 #  
 
-from .net import *
-from .registry import *
+__all__ = ["ConnectionType","ClassicConnectionType"]
+
+from . import version
 from .constants import *
-from .version import *
-from .util import *
-from .errors import *
-from .ext import *
-from .conntypes import *
+
+class ConnectionType(object):
+    def __init__(self,peer):
+        self.peer = peer
+    def init(self,cid):
+        # Return value of true would cause halting of processing
+        pass
+    def receive(self,msg,pid,flags,cid):
+        return False
+    def send(self,data,pid,cid):
+        return False
+
+class ClassicConnectionType(ConnectionType):
+    def init(self,cid):
+        if cid is not None:
+            self.peer.clients[cid].state = STATE_HANDSHAKE_WAIT1
+            self.peer.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.peer.registry.reg_int_str._inv)},cid)
+        elif cid is None:
+            self.peer.remote_state = STATE_HANDSHAKE_WAIT1

@@ -33,6 +33,9 @@ import struct
 import threading
 import socket
 import selectors
+import warnings
+import collections
+import zlib
 
 if sys.version_info.major==2:
     import Queue
@@ -46,16 +49,41 @@ try:
 except ImportError:
     import umsgpack as msgpack
 
+try:
+    import ssl
+except (ImportError,AttributeError):
+    HAVE_SSL = False
+else:
+    HAVE_SSL = True
+
 import peng3d
 
 from . import version
 from . import packet
 from . import util
 from . import registry
+from . import errors
+from . import conntypes
 from .constants import *
 
 STRUCT_HEADER = struct.Struct(STRUCT_FORMAT_HEADER)
 STRUCT_LENGTH32 = struct.Struct(STRUCT_FORMAT_LENGTH32)
+
+# Code from https://github.com/oxplot/fysom/issues/1
+try:
+    unicode = unicode
+except NameError:
+    # 'unicode' is undefined, must be Python 3
+    str = str
+    unicode = str
+    bytes = bytes
+    basestring = (str,bytes)
+else:
+    # 'unicode' exists, must be Python 2
+    str = str
+    unicode = unicode
+    bytes = str
+    basestring = basestring
 
 class Server(object):
     def __init__(self,peng=None,addr=None,clientcls=None,cfg={}):
@@ -114,6 +142,8 @@ class Server(object):
         self.run = True
         self.clients = {}
         
+        self.conntypes = {}
+        
         self.registry = registry.PacketRegistry()
     
     def initialize(self):
@@ -123,12 +153,30 @@ class Server(object):
             if self._is_initialized:
                 return
             
+            # Packet registration
+            
             from .packet import internal
             
-            self.register_packet("peng3dnet:internal.handshake",internal.HandshakePacket(self.registry,self),1)
-            self.register_packet("peng3dnet:internal.handshake.accept",internal.HandshakeAcceptPacket(self.registry,self),2)
+            self.register_packet("peng3dnet:internal.hello",internal.HelloPacket(self.registry,self),1)
+            self.register_packet("peng3dnet:internal.settype",internal.SetTypePacket(self.registry,self),2)
+            self.register_packet("peng3dnet:internal.handshake",internal.HandshakePacket(self.registry,self),3)
+            self.register_packet("peng3dnet:internal.handshake.accept",internal.HandshakeAcceptPacket(self.registry,self),4)
             
             self.register_packet("peng3dnet:internal.closeconn",internal.CloseConnectionPacket(self.registry,self),16)
+            
+            # Calls all methods named _reg_packets_* for mixin support
+            for attr in dir(self):
+                if attr.startswith("_reg_packets_") and callable(getattr(self,attr,None)):
+                    getattr(self,attr)()
+            
+            # Connection Type registration
+            
+            self.addConnType("classic",conntypes.ClassicConnectionType(self))
+            
+            # Calls all methods named _reg_conntypes_* for mixin support
+            for attr in dir(self):
+                if attr.startswith("_reg_conntypes_") and callable(getattr(self,attr,None)):
+                    getattr(self,attr)()
             
             self.sendEvent("peng3dnet:server.initialize",{})
     
@@ -139,6 +187,14 @@ class Server(object):
             if self._is_bound:
                 return
             
+            if self.cfg["net.ssl.enabled"] and self.cfg["net.ssl.force"] and not HAVE_SSL:
+                raise RuntimeError("SSL Has not been found, but it is required")
+            elif (self.cfg["net.ssl.enabled"] and not HAVE_SSL
+                  or self.cfg["net.ssl.server.certfile"] is None
+                  or self.cfg["net.ssl.server.keyfile"] is None):
+                self.cfg["net.ssl.enabled"]=False
+                warnings.warn("Potential security weakness because ssl had to be disabled")
+            
             self._irqrecv,self._irqsend = socket.socketpair()
             
             self.sock = socket.socket(socket.AF_INET,socket.SOCK_STREAM)
@@ -147,6 +203,14 @@ class Server(object):
             self.sock.bind(tuple(self.addr))
             self.sock.listen(100)
             self.sock.setblocking(False)
+            
+            if self.cfg["net.ssl.enabled"]:
+                self.sslcontext = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+                self.sslcontext.load_cert_chain(certfile=self.cfg["net.ssl.server.certfile"], keyfile=self.cfg["net.ssl.server.keyfile"])
+                self.sslcontext.load_default_certs(purpose=ssl.Purpose.CLIENT_AUTH)
+                #self.sslcontext.load_verify_locations(cafile=self.cfg["net.ssl.server.certfile"])
+                self.sslcontext.verify_mode = ssl.CERT_REQUIRED if self.cfg["net.ssl.server.force_verify"] else ssl.CERT_OPTIONAL
+                #print(self.sslcontext.get_ca_certs())
             
             self._is_bound = True
             
@@ -194,7 +258,7 @@ class Server(object):
         self.sendEvent("peng3dnet:server.interrupt",{})
     
     def shutdown(self,join=True,timeout=0,reason="servershutdown"):
-        for cid in self.clients:
+        for cid in list(self.clients.keys()):
             try:
                 self.close_connection(cid,reason)
                 #self.send_message("peng3d:internal.closeconn",{"reason":"servershutdown"})
@@ -225,6 +289,10 @@ class Server(object):
     
     def _accept(self,sock,mask,data):
         conn,addr = sock.accept()
+        
+        if self.cfg["net.ssl.enabled"]:
+            conn = self.sslcontext.wrap_socket(conn, server_side=True)
+        
         conn.setblocking(False)
         
         client = self.clientcls(self,conn,addr,self.genCID())
@@ -233,11 +301,36 @@ class Server(object):
         with self._selector_lock:
             self.selector.register(conn,selectors.EVENT_READ,[self._client_ready,client])
         
-        client.on_connect()
-        self.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.registry.reg_int_str._inv)},client.cid)
-        self.sendEvent("peng3dnet:server.connection.accept",{"sock":conn,"addr":addr,"client":client,"cid":client.cid})
+        if not self.cfg["net.ssl.enabled"]:
+            client.state = STATE_HELLOWAIT
+            client.on_connect()
+            #self.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.registry.reg_int_str._inv)},client.cid)
+            self.send_message("peng3dnet:internal.hello",{"version":version.VERSION,"protoversion":version.PROTOVERSION},client.cid)
+            self.sendEvent("peng3dnet:server.connection.accept",{"sock":conn,"addr":addr,"client":client,"cid":client.cid})
     
     def _client_ready(self,conn,mask,data):
+        if data is not None and self.cfg["net.ssl.enabled"] and data.ssl_state=="handshake":
+            # SSL Handshake not yet complete
+            try:
+                conn.do_handshake()
+            except ssl.SSLWantWriteError:
+                skey = self.selector.get_key(conn)
+                if not skey&selectors.EVENT_WRITE:
+                    self.selector.modify(conn,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._client_ready,data])
+                    # Interrupt not necessary, as this callback should be called while not selecting
+            except ssl.SSLWantReadError:
+                # Should wait by itself again...
+                pass
+            else:
+                # Connected only now, send init packets
+                data.ssl_state = "connected"
+                data.state = STATE_HELLOWAIT
+                data.on_connect()
+                #self.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.registry.reg_int_str._inv)},data.cid)
+                self.send_message("peng3dnet:internal.hello",{"version":version.VERSION,"protoversion":version.PROTOVERSION},data.cid)
+                self.sendEvent("peng3dnet:server.connection.accept",{"sock":conn,"addr":data.addr,"client":data,"cid":data.cid})
+            return
+        
         if (mask & selectors.EVENT_READ):
             # Socket Readable
             if conn==self._irqrecv:
@@ -250,7 +343,20 @@ class Server(object):
                 dat = conn.recv(1024)
                 return
             
-            dat = conn.recv(1024)
+            if self.cfg["net.ssl.enabled"]:
+                try:
+                    dat = conn.recv(1024)
+                except ssl.SSLWantWriteError:
+                    skey = self.selector.get_key(conn)
+                    if not skey&selectors.EVENT_WRITE:
+                        self.selector.modify(conn,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._client_ready,data])
+                        # Interrupt not necessary, as this callback should be called while not selecting
+                    dat = ""
+                except ssl.SSLWantReadError:
+                    dat = ""
+                
+            else:
+                dat = conn.recv(1024)
             if dat:
                 # Non-empty
                 try:
@@ -262,7 +368,6 @@ class Server(object):
                 with self._selector_lock:
                     self.selector.unregister(conn)
                 data.close()
-                del self.clients[data.cid]
         
         if (mask & selectors.EVENT_WRITE):
             # Socket Writeable
@@ -270,19 +375,32 @@ class Server(object):
                 return # IRQ Socket
             
             try:
-                msg = data.write_queue.get_nowait()
-            except Queue.Empty:
+                msg = data.write_queue.popleft()
+            except IndexError:
                 self.selector.modify(conn,selectors.EVENT_READ,[self._client_ready,data])
             else:
-                conn.sendall(msg)
-                if data.write_queue.empty():
+                if self.cfg["net.ssl.enabled"]:
+                    try:
+                        conn.sendall(msg)
+                    except ssl.SSLWantWriteError:
+                        # Socket should already be in write mode
+                        pass
+                    except ssl.SSLWantReadError:
+                        # Socket will be in read mode
+                        pass
+                    else:
+                        # Re-insert message at the front
+                        data.write_queue.appendleft(msg)
+                else:
+                    conn.sendall(msg)
+                if len(data.write_queue)==0:
                     self.selector.modify(conn,selectors.EVENT_READ,[self._client_ready,data])
             
-            if data._mark_close and data.write_queue.empty():
+            if data._mark_close and len(data.write_queue)==0:
                 with self._selector_lock:
                     self.selector.unregister(conn)
                 data.close()
-                del self.clients[data.cid]
+                # No need to delete, handler already does it
     
     def genCID(self):
         with self._cid_lock:
@@ -303,16 +421,15 @@ class Server(object):
             self._process_condition.notify()
     
     def send_message(self,ptype,data,cid):
-        self.clients[cid].on_send(ptype,data)
-        self.sendEvent("peng3dnet:server.connection.send",{"client":self.clients[cid],"pid":ptype,"data":data})
-        self.registry.getObj(ptype)._send(data,cid)
+        if self.cfg["net.debug.print.send"]:
+            print("SEND %s to %s"%(ptype,cid))
         
         data = msgpack.dumps(data)
         
         flags = 0
         
-        if len(data)>COMPRESS_THRESHOLD:
-            data = zlib.compress(data,COMPRESS_LEVEL)
+        if len(data)>self.cfg["net.compress.threshold"] and self.cfg["net.compress.enabled"]:
+            data = zlib.compress(data,self.cfg["net.compress.level"])
             flags = flags|FLAG_COMPRESSED
         
         header = STRUCT_HEADER.pack(self.registry.getInt(ptype),flags)
@@ -321,11 +438,16 @@ class Server(object):
         prefix = STRUCT_LENGTH32.pack(len(data))
         data = prefix+data
         
-        self.clients[cid].write_queue.put(data)
+        self.clients[cid].write_queue.append(data)
         if not (self.selector.get_key(self.clients[cid].conn).events&selectors.EVENT_WRITE):
             # Prevents unneccessary modification if nothing changes
             self.selector.modify(self.clients[cid].conn,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._client_ready,self.clients[cid]])
             self.interrupt() # forces the changes to apply
+        
+        if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,basestring) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.clients[cid].conntype].send(data,ptype,cid):
+            self.clients[cid].on_send(ptype,data)
+            self.sendEvent("peng3dnet:server.connection.send",{"client":self.clients[cid],"pid":ptype,"data":data})
+            self.registry.getObj(ptype)._send(data,cid)
     
     def process_single_packet(self,client):
         if client._buflen is None:
@@ -349,6 +471,9 @@ class Server(object):
     def register_packet(self,name,obj,n=None):
         self.registry.register(obj,name,n)
     
+    def addConnType(self,t,obj):
+        self.conntypes[t]=obj
+    
     def close_connection(self,cid,reason=None):
         # not removed immediately to ensure that the reason is transmitted
         self.send_message("peng3dnet:internal.closeconn",{"reason":reason},cid)
@@ -365,11 +490,18 @@ class Server(object):
             except Queue.Empty:
                 break # may happen rarely
             else:
+                # Pre-process
+                
                 header,body = data[:STRUCT_HEADER.size],data[STRUCT_HEADER.size:]
                 pid,flags = STRUCT_HEADER.unpack(header)
                 
+                if self.cfg["net.debug.print.recv"] and (pid<64 or self.clients[cid].conntype == CONNTYPE_CLASSIC):
+                    print("RECV %s"%self.registry.getStr(pid))
+                
                 if flags&FLAG_COMPRESSED:
+                    olen = len(body)
                     body = zlib.decompress(body)
+                    #print("Received compressed packet, compressed %sb uncompressed %sb, rate %.2f%%"%(olen,len(body),(olen/len(body))*100))
                 if flags&FLAG_ENCRYPTED_AES:
                     raise NotImplementedError("Encryption not yet implemented")
                 
@@ -378,9 +510,10 @@ class Server(object):
                 
                 try:
                     client = self.clients[cid]
-                    self.registry.getObj(pid)._receive(msg,cid)
-                    client.on_receive(pid,msg)
-                    self.sendEvent("peng3dnet:server.connection.recv",{"client":client,"pid":pid,"msg":msg})
+                    if pid<64 or not self.conntypes[client.conntype].receive(msg,pid,flags,cid):
+                        self.registry.getObj(pid)._receive(msg,cid)
+                        client.on_receive(pid,msg)
+                        self.sendEvent("peng3dnet:server.connection.recv",{"client":client,"pid":pid,"msg":msg})
                 except Exception:
                     import traceback;traceback.print_exc()
                 n+=1
@@ -409,7 +542,7 @@ class ClientOnServer(object):
         self.addr = addr
         self.cid = cid
         
-        self.write_queue = Queue.Queue()
+        self.write_queue = collections.deque()
         
         self.name = None
         
@@ -418,11 +551,19 @@ class ClientOnServer(object):
         
         self._mark_close = False
         
-        self.state = STATE_HANDSHAKE_WAIT1
+        self.mode = MODE_NOTSET
+        self.conntype = CONNTYPE_NOTSET
+        self.state = STATE_INIT
+        self.ssl_state = "handshake"
+        self.ssl_seclevel = SSLSEC_NONE
     
     def close(self,reason=None):
+        if self.server.cfg["net.debug.print.close"]:
+            print("CLOSE %s because of %s"%(self.cid,reason))
+        
         self.server.sendEvent("peng3dnet:server.connection.close",{"client":self,"reason":reason})
         self.state = STATE_CLOSED
+        self.mode = MODE_CLOSED
         try:
             self.server.selector.unregister(self.conn)
         except Exception:
@@ -430,6 +571,11 @@ class ClientOnServer(object):
         try:
             self.conn.close()
         except Exception:
+            pass
+        try:
+            # may be already deleted
+            del self.server.clients[self.cid]
+        except KeyError:
             pass
         if self.state!=STATE_CLOSED:
             self.on_close(reason)
@@ -447,7 +593,7 @@ class ClientOnServer(object):
         pass
         
 class Client(object):
-    def __init__(self,peng=None,addr=None,cfg={}):
+    def __init__(self,peng=None,addr=None,cfg={},conntype=CONNTYPE_CLASSIC):
         if peng is None:
             self.cfg = peng3d.config.Config(cfg,DEFAULT_CONFIG)
         else:
@@ -482,8 +628,13 @@ class Client(object):
         
         self._init_lock = threading.Lock()
         
+        self._process_lock = threading.Lock()
+        
         self._process_queue = Queue.Queue()
         self._process_condition = threading.Condition()
+        
+        self._connected_condition = threading.Condition()
+        self._closed_condition = threading.Condition()
         
         self._is_connected = False
         self._is_started = False
@@ -505,7 +656,14 @@ class Client(object):
         
         self._write_buf = b""
         
+        self.target_conntype = conntype
+        self.conntype = CONNTYPE_NOTSET
+        self.mode = MODE_NOTSET
         self.remote_state = STATE_INIT
+        self.ssl_state = "handshake"
+        self.ssl_seclevel = SSLSEC_NONE
+        
+        self.conntypes = {}
         
         self.registry = registry.PacketRegistry()
     
@@ -516,12 +674,30 @@ class Client(object):
             if self._is_initialized:
                 return
             
+            # Packet registration
+            
             from .packet import internal
             
-            self.register_packet("peng3dnet:internal.handshake",internal.HandshakePacket(self.registry,self),1)
-            self.register_packet("peng3dnet:internal.handshake.accept",internal.HandshakeAcceptPacket(self.registry,self),2)
+            self.register_packet("peng3dnet:internal.hello",internal.HelloPacket(self.registry,self),1)
+            self.register_packet("peng3dnet:internal.settype",internal.SetTypePacket(self.registry,self),2)
+            self.register_packet("peng3dnet:internal.handshake",internal.HandshakePacket(self.registry,self),3)
+            self.register_packet("peng3dnet:internal.handshake.accept",internal.HandshakeAcceptPacket(self.registry,self),4)
             
             self.register_packet("peng3dnet:internal.closeconn",internal.CloseConnectionPacket(self.registry,self),16)
+            
+            # Calls all methods named _reg_packets_* for mixin support
+            for attr in dir(self):
+                if attr.startswith("_reg_packets_") and callable(getattr(self,attr,None)):
+                    getattr(self,attr)()
+            
+            # Connection Type registration
+            
+            self.addConnType("classic",conntypes.ClassicConnectionType(self))
+            
+            # Calls all methods named _reg_conntypes_* for mixin support
+            for attr in dir(self):
+                if attr.startswith("_reg_conntypes_") and callable(getattr(self,attr,None)):
+                    getattr(self,attr)()
             
             self.sendEvent("peng3dnet:client.initialize",{})
     
@@ -532,10 +708,33 @@ class Client(object):
             if self._is_connected:
                 return
             
+            if self.cfg["net.ssl.enabled"] and self.cfg["net.ssl.force"] and not HAVE_SSL:
+                raise RuntimeError("SSL Has not been found, but it is required")
+            elif self.cfg["net.ssl.enabled"] and not HAVE_SSL:
+                self.cfg["net.ssl.enabled"]=False
+                warnings.warn("Potential security weakness because ssl had to be disabled")
+            
             self._irqrecv,self._irqsend = socket.socketpair()
             
-            self.sock = socket.create_connection(tuple(self.addr))
-            self.sock.setblocking(True)
+            if self.cfg["net.ssl.enabled"]:
+                self.sslcontext = ssl.create_default_context(ssl.Purpose.SERVER_AUTH)
+                self.sslcontext.check_hostname = self.cfg["net.ssl.client.check_hostname"]
+                self.sslcontext.verify_mode = ssl.CERT_REQUIRED if self.cfg["net.ssl.client.force_verify"] else ssl.CERT_OPTIONAL
+                
+                self.sslcontext.load_default_certs(purpose=ssl.Purpose.SERVER_AUTH)
+                #self.sslcontext.load_cert_chain(self.cfg["net.ssl.server.certfile"],self.cfg["net.ssl.server.keyfile"])
+                
+                #print(self.sslcontext.get_ca_certs())
+                
+                self.sock = self.sslcontext.wrap_socket(socket.socket(socket.AF_INET),server_hostname=self.addr[0])
+                self.sock.connect(tuple(self.addr))
+                # TODO: check with self-signed certs
+            else:
+                self.sock = socket.create_connection(tuple(self.addr))
+            
+                self.sock.setblocking(True)
+                
+                self.remote_state = STATE_HELLOWAIT
             
             self._is_connected = True
             
@@ -583,6 +782,23 @@ class Client(object):
         self.sendEvent("peng3dnet:client.interrupt",{})
     
     def _sock_ready(self,sock,mask,data):
+        if data is not None and self.cfg["net.ssl.enabled"] and self.ssl_state=="handshake" and sock is self.sock:
+            # SSL Handshake not yet complete
+            try:
+                sock.do_handshake()
+            except ssl.SSLWantWriteError:
+                skey = self.selector.get_key(sock)
+                if not skey&selectors.EVENT_WRITE:
+                    self.selector.modify(sock,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._sock_ready,None])
+                    # Interrupt not necessary, as this callback should be called while not selecting
+            except ssl.SSLWantReadError:
+                # Should wait by itself again...
+                pass
+            else:
+                # Connected only now, send init packets
+                self.ssl_state = "connected"
+            return
+        
         if sock==self._irqrecv:
             dat = sock.recv(8)
             if dat!=b"wake up!":
@@ -595,7 +811,19 @@ class Client(object):
         if (mask & selectors.EVENT_READ):
             # Readable
             
-            dat = sock.recv(1024)
+            if self.cfg["net.ssl.enabled"]:
+                try:
+                    dat = sock.recv(1024)
+                except ssl.SSLWantWriteError:
+                    skey = self.selector.get_key(sock)
+                    if not skey&selectors.EVENT_WRITE:
+                        self.selector.modify(sock,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._sock_ready,None])
+                        # Interrupt not necessary, as this callback should be called while not selecting
+                    dat = ""
+                except ssl.SSLWantReadError:
+                    dat = ""
+            else:
+                dat = sock.recv(1024)
             if dat:
                 # Non-empty
                 try:
@@ -611,16 +839,19 @@ class Client(object):
             self.pump_write_buffer()
     
     def send_message(self,ptype,data,cid=None):
-        self.on_send(ptype,data)
-        self.sendEvent("peng3dnet:client.send",{"pid":ptype,"data":data})
-        self.registry.getObj(ptype)._send(data)
+        if self.cfg["net.debug.print.send"]:
+            print("SEND %s"%ptype)
+        if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,basestring) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.target_conntype].send(data,ptype,cid):
+            self.on_send(ptype,data)
+            self.sendEvent("peng3dnet:client.send",{"pid":ptype,"data":data})
+            self.registry.getObj(ptype)._send(data)
         
         data = msgpack.dumps(data)
         
         flags = 0
         
-        if len(data)>COMPRESS_THRESHOLD:
-            data = zlib.compress(data,COMPRESS_LEVEL)
+        if len(data)>self.cfg["net.compress.threshold"] and self.cfg["net.compress.enabled"]:
+            data = zlib.compress(data,self.cfg["net.compress.level"])
             flags = flags|FLAG_COMPRESSED
         
         header = STRUCT_HEADER.pack(self.registry.getInt(ptype),flags)
@@ -638,12 +869,22 @@ class Client(object):
             return
         
         try:
-            bytes_sent = self.sock.send(self._write_buf,socket.MSG_DONTWAIT)
+            if self.cfg["net.ssl.enabled"]:
+                try:
+                    bytes_sent = self.sock.send(self._write_buf)
+                except ssl.SSLWantWriteError:
+                    # Should already be in write mode
+                    bytes_sent = 0
+                except ssl.SSLWantReadError:
+                    # Will be in read mode
+                    bytes_sent = 0
+            else:
+                bytes_sent = self.sock.send(self._write_buf,socket.MSG_DONTWAIT)
             self._write_buf = self._write_buf[bytes_sent:]
             if len(self._write_buf)==0:
                 if self._mark_close:
                     with self._selector_lock:
-                        self.selector.unregister(sock)
+                        self.selector.unregister(self.sock)
                     self.on_close(self._close_reason)
                 return # sent everything in one go
             if not (self.selector.get_key(self.sock).events&selectors.EVENT_WRITE):
@@ -698,6 +939,9 @@ class Client(object):
                 header,body = data[:STRUCT_HEADER.size],data[STRUCT_HEADER.size:]
                 pid,flags = STRUCT_HEADER.unpack(header)
                 
+                if self.cfg["net.debug.print.recv"] and (pid<64 or self.target_conntype==CONNTYPE_CLASSIC):
+                    print("RECV %s"%self.registry.getStr(pid))
+                
                 if flags&FLAG_COMPRESSED:
                     body = zlib.decompress(body)
                 if flags&FLAG_ENCRYPTED_AES:
@@ -706,11 +950,13 @@ class Client(object):
                 # Due to https://github.com/msgpack/msgpack-python/issues/99
                 msg = msgpack.unpackb(body,encoding="utf-8")
                 
-                # No error catching, for better debugging
-                self.registry.getObj(pid)._receive(msg)
-                self.on_receive(pid,msg)
-                self.sendEvent("peng3dnet:client.recv",{"pid":pid,"msg":msg})
-                n+=1
+                with self._process_lock:
+                    # No error catching, for better debugging
+                    if pid<64 or not self.conntypes[self.target_conntype].receive(msg,pid,flags,None):
+                        self.registry.getObj(pid)._receive(msg)
+                        self.on_receive(pid,msg)
+                        self.sendEvent("peng3dnet:client.recv",{"pid":pid,"msg":msg})
+                    n+=1
         return n
     def process_forever(self):
         while self.run:
@@ -720,6 +966,9 @@ class Client(object):
         self._process_thread = threading.Thread(name="peng3dnet process Thread",target=self.process_forever)
         self._process_thread.daemon = True
         self._process_thread.start()
+    
+    def addConnType(self,t,obj):
+        self.conntypes[t]=obj
     
     def close_connection(self,cid=None,reason=None):
         # not removed immediately to ensure that the reason is transmitted
@@ -735,7 +984,13 @@ class Client(object):
             self._process_thread.join()
     
     def close(self,reason=None):
+        if self.cfg["net.debug.print.close"]:
+            print("CLOSE because %s"%reason)
+        
         self.sendEvent("peng3dnet:client.close",{"reason":reason})
+        self.mode = MODE_CLOSED
+        with self._closed_condition:
+            self._closed_condition.notify_all()
         try:
             sock.close()
         except Exception:
@@ -748,6 +1003,20 @@ class Client(object):
         if self.remote_state!=STATE_CLOSED:
             self.on_close(reason)
         self.remote_state = STATE_CLOSED
+    
+    def wait_for_connection(self,timeout=None):
+        with self._connected_condition:
+            if self.remote_state>=STATE_ACTIVE:
+                return # Already connected
+            if not self._connected_condition.wait(timeout):
+                raise errors.TimedOutError("Timed out waiting for connection")
+    
+    def wait_for_close(self,timeout=None):
+        with self._closed_condition:
+            if self.remote_state == STATE_CLOSED:
+                return # Already closed
+            if not self._closed_condition.wait(timeout):
+                raise errors.TimedOutError("Timed out waiting for closed connection")
     
     # Server callbacks
     def on_handshake_complete(self):

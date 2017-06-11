@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 #
-#  errors.py
+#  ping.py
 #  
 #  Copyright 2017 notna <notna@apparat.org>
 #  
@@ -22,18 +22,26 @@
 #  
 #  
 
-__all__ = [
-    "InvalidAddressError","InvalidPortError","InvalidHostError",
-    ]
+import pprint
 
-class InvalidAddressError(ValueError):pass
+import peng3dnet
 
-class InvalidPortError(InvalidAddressError):pass
-class InvalidHostError(InvalidAddressError):pass
+def main(args):
+    if len(args)==2:
+        addr = args[1]
+    else:
+        addr = input("Server address:")
+    
+    print("Pinging server...")
+    data = peng3dnet.ext.ping.pingServer(addr=addr)
+    print("Done")
+    
+    print("Latency of %.2fms"%(data["delay"]*1000))
+    print("Raw data:")
+    pprint.pprint(data)
+    
+    return 0
 
-class UnsupportedAddressError(NotImplementedError):pass
-
-class InvalidSmartPacketAction(ValueError):pass
-
-class TimedOutError(RuntimeError):pass
-class FailedPingError(TimedOutError):pass
+if __name__ == '__main__':
+    import sys
+    sys.exit(main(sys.argv))
