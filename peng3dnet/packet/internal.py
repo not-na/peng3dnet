@@ -22,6 +22,38 @@
 #  
 #  
 
+"""
+This module contains various internal packets not intended for direct use.
+
+These packets will be registered by the default implementations of client and
+server classes with names starting with ``peng3dnet:``\ . Any other packets whose
+name starts with ``peng3dnet:`` may be processed incorrectly.
+
+Additionally, packets within this module usually use reserved and static packet IDs below 16.
+
+Handshake
+=========
+
+Note that if a custom connection type is used, any steps after step 3. may be left out.
+
+1. Server sends a :py:class:`HelloPacket` with version information
+2. Client responds with :py:class:`SetTypePacket` containing connection type
+3. Server stores connection type and sends :py:class:`HandshakePacket` containing version and registry
+4. Client updates own registry based on packet and sends :py:class:`HandshakeAcceptPacket`
+5. Server receives packet and calls event handler to signal a successful handshake
+
+Connection shutdown
+===================
+
+Note that this only applies to clean shutdowns caused by :py:meth:`~peng3dnet.net.Server.close_connection()` or its client-side equivalent.
+
+1. ``close_connection()`` is called
+2. :py:class:`CloseConnectionPacket` is sent to peer and internal flag is set
+3. After packet has been fully sent, event handlers are called
+4. Peer receives packet and calls event handlers
+5. Server cleans up internal data structures
+"""
+
 __all__ = [
     "HelloPacket","SetTypePacket",
     "HandshakePacket", "HandshakeAcceptPacket",
@@ -33,6 +65,14 @@ from ..constants import *
 from .. import version
 
 class HelloPacket(SmartPacket):
+    """
+    Internal packet sent by the server to initialize a handshake.
+    
+    This is usually the first packet transmitted by every connection.
+    It contains version information for the client to check.
+    
+    If the client does not support the given protocol version, the connection must be aborted with the reason ``protoversionmismatch``\ .
+    """
     state = STATE_HELLOWAIT
     side = SIDE_CLIENT
     conntype = CONNTYPE_NOTSET
@@ -51,12 +91,21 @@ class HelloPacket(SmartPacket):
         self.peer.remote_state = STATE_WAITTYPE
         
         self.peer.conntypes[self.peer.target_conntype].init(cid)
+    receive.__noautodoc__ = True
     def send(self,msg,cid=None):
         self.peer.clients[cid].state = STATE_WAITTYPE
         if self.peer.cfg["net.debug.print.connect"]:
             print("HELLO %s"%cid)
+    send.__noautodoc__ = True
 
 class SetTypePacket(SmartPacket):
+    """
+    Internal packet sent by the client to indicate the connection type.
+    
+    If the server does not recognize the connection type, the connection must be aborted with the reason ``unknownconntype``\ .
+    
+    If no connection type is supplied, ``classic`` is substituted.
+    """
     state = STATE_WAITTYPE
     side = SIDE_SERVER
     def receive(self,msg,cid=None):
@@ -68,8 +117,18 @@ class SetTypePacket(SmartPacket):
         
         self.peer.clients[cid].conntype = t
         self.peer.conntypes[t].init(cid)
+    receive.__noautodoc__ = True
 
 class HandshakePacket(SmartPacket):
+    """
+    Internal packet sent by the server to synchronize the registry.
+    
+    Additionally, the version information is sent and checked.
+    
+    If the :confval:`net.registry.autosync` config value is true, the registry sent by the server will be adapted to the client.
+    
+    Note that only IDs are synced to names, objects will not be affected.
+    """
     state = STATE_HANDSHAKE_WAIT1
     side = SIDE_CLIENT
     invalid_action = "close"
@@ -104,16 +163,30 @@ class HandshakePacket(SmartPacket):
         self.peer.on_handshake_complete()
         with self.peer._connected_condition:
             self.peer._connected_condition.notify_all()
+    receive.__noautodoc__ = True
 
 class HandshakeAcceptPacket(SmartPacket):
+    """
+    Internal packet sent by the client to indicate a successful handshake.
+    
+    Once this packet has been sent or received, the connection is established and can be used.
+    """
     state = STATE_HANDSHAKE_WAIT1
     side = SIDE_SERVER
     invalid_action = "close"
     def receive(self,msg,cid):
         if msg["success"]:
             self.peer.clients[cid].on_handshake_complete()
+    receive.__noautodoc__ = True
 
 class CloseConnectionPacket(Packet):
+    """
+    Internal packet to be sent to indicate that a connection is about to be closed.
+    
+    Usually includes a reason in the ``reason`` field.
+    
+    This packet can be sent at any time, regardless of connection state or type.
+    """
     def receive(self,msg,cid=None):
         if isinstance(msg,dict):
             reason = msg.get("reason",None)
@@ -128,3 +201,4 @@ class CloseConnectionPacket(Packet):
             client = self.peer.clients[cid]
             client.close(reason)
             # Everything else is handled by the class
+    receive.__noautodoc__ = True

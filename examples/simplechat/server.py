@@ -74,6 +74,7 @@ def main(args):
     
     server.cfg["net.ssl.server.certfile"]="testcerts/cert.pem"
     server.cfg["net.ssl.server.keyfile"]="testcerts/key.pem"
+    server.cfg["net.ssl.cafile"]="testcerts/CAfile.pem"
     
     server.register_packet("chat:message",common.MessagePacket(server.registry,server))
     server.register_packet("chat:join",common.JoinPacket(server.registry,server))

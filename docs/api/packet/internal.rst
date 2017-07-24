@@ -1,6 +1,6 @@
 
-``peng3dnet.internal`` - Internal Packet Classes
-================================================
+``peng3dnet.packet.internal`` - Internal Packet Classes
+=======================================================
 
 .. automodule:: peng3dnet.packet.internal
    :members:

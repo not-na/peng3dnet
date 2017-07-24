@@ -49,6 +49,114 @@ sphinx.ext.autodoc.DataDocumenter.add_directive_header = add_directive_header
 #print(sphinx.ext.autodoc.DataDocumenter.add_directive_header)
 #### End monkeypatch autodoc
 
+# copied from peng3d
+### Begin monkeypatch coverage to ignore on_ event handlers
+import inspect
+from sphinx.util.inspect import safe_getattr
+
+def build_py_coverage(self): # Method taken from sphinx source code v1.3.3 on the 16th of July 2016, update if there is a newer version
+    objects = self.env.domaindata['py']['objects']
+    modules = self.env.domaindata['py']['modules']
+    
+    skip_undoc = self.config.coverage_skip_undoc_in_source
+
+    for mod_name in modules:
+        ignore = False
+        for exp in self.mod_ignorexps:
+            if exp.match(mod_name):
+                ignore = True
+                break
+        if ignore:
+            continue
+        
+        try:
+            mod = __import__(mod_name, fromlist=['foo'])
+        except ImportError as err:
+            self.warn('module %s could not be imported: %s' %
+                        (mod_name, err))
+            self.py_undoc[mod_name] = {'error': err}
+            continue
+        
+        funcs = []
+        classes = {}
+    
+        for name, obj in inspect.getmembers(mod):
+            # diverse module attributes are ignored:
+            if name[0] == '_':
+                # begins in an underscore
+                continue
+            if not hasattr(obj, '__module__'):
+                # cannot be attributed to a module
+                continue
+            if obj.__module__ != mod_name:
+                # is not defined in this module
+                continue
+            
+            full_name = '%s.%s' % (mod_name, name)
+        
+            if inspect.isfunction(obj):
+                if full_name not in objects:
+                    for exp in self.fun_ignorexps:
+                        if exp.match(name):
+                            break
+                    else:
+                        if skip_undoc and not obj.__doc__:
+                            continue
+                        funcs.append(name)
+            elif inspect.isclass(obj):
+                for exp in self.cls_ignorexps:
+                    if exp.match(name):
+                        break
+                else:
+                    if full_name not in objects:
+                        if skip_undoc and not obj.__doc__:
+                            continue
+                        # not documented at all
+                        classes[name] = []
+                        continue
+                    
+                    attrs = []
+                
+                    for attr_name in dir(obj):
+                        if attr_name not in obj.__dict__:
+                            continue
+                        try:
+                            attr = safe_getattr(obj, attr_name)
+                        except AttributeError:
+                            continue
+                        if not (inspect.ismethod(attr) or
+                                inspect.isfunction(attr)):
+                            continue
+                        if attr_name[0] == '_':
+                            # starts with an underscore, ignore it
+                            continue
+                        ######### Custom filters
+                        if attr_name.startswith("on_"):
+                            continue
+                        if attr_name in ["getStr","getInt"]:
+                            continue
+                        if getattr(attr,"__noautodoc__",False):
+                            continue
+                        ######### End Custom filters
+                        if skip_undoc and not attr.__doc__:
+                            # skip methods without docstring if wished
+                            continue
+                        
+                        full_attr_name = '%s.%s' % (full_name, attr_name)
+                        if full_attr_name not in objects:
+                            attrs.append(attr_name)
+                    
+                    if attrs:
+                        # some attributes are undocumented
+                        classes[name] = attrs
+            
+        self.py_undoc[mod_name] = {'funcs': funcs, 'classes': classes}
+
+import sphinx.ext.coverage
+sphinx.ext.coverage.CoverageBuilder.build_py_coverage=build_py_coverage
+
+### End monkeypatch coverage
+
 # Patched extensions base path.
 sys.path.insert(0, os.path.abspath('.'))
 sys.path.insert(0, os.path.abspath('..'))
@@ -61,7 +169,18 @@ def setup(app):
     app.add_object_type('confval', 'confval',
                         objname='configuration value',
                         indextemplate='pair: %s; configuration value')
+    
+    app.connect("autodoc-skip-member", autodoc_skip_member)
 
+def autodoc_skip_member(app, what, name, obj, skip, options):
+    if name in ["getInt","getStr"] or (hasattr(obj,"__noautodoc__") and obj.__noautodoc__ == True):
+        #print("SKIP %s %s"%(what,name))
+        return True
+    elif name in ["_receive","_send"]:
+        return False
+    else:
+        #print("DOC  %s %s"%(what,name))
+        return None
 
 # -- General configuration ------------------------------------------------
 

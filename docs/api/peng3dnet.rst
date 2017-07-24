@@ -18,7 +18,13 @@ modules use the ``__all__`` variable to explicitly define their exported classes
    
    peng3dnet.net
    peng3dnet.constants
+   peng3dnet.conntypes
    packet/index
    packet/internal
+   ext/index
+   ext/ping
+   ext/mpgame
    peng3dnet.registry
+   peng3dnet.util
+   peng3dnet.errors
    peng3dnet.version
