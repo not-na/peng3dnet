@@ -802,6 +802,8 @@ class ClientOnServer(object):
             print("CLOSE %s because of %s"%(self.cid,reason))
         
         self.server.sendEvent("peng3dnet:server.connection.close",{"client":self,"reason":reason})
+        if self.state!=STATE_CLOSED:
+            self.on_close(reason)
         self.state = STATE_CLOSED
         self.mode = MODE_CLOSED
         try:
@@ -817,8 +819,6 @@ class ClientOnServer(object):
             del self.server.clients[self.cid]
         except KeyError:
             pass
-        if self.state!=STATE_CLOSED:
-            self.on_close(reason)
     
     def on_handshake_complete(self):
         """
