@@ -25,7 +25,7 @@
 
 __all__ = ["VERSION","RELEASE","PROTOVERSION"]
 
-VERSION = "0.1.0a1"
+VERSION = "0.1.0a2"
 """
 Full version number of this package.
 

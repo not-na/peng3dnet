@@ -52,7 +52,7 @@ if version < '2.2.3':
     DistributionMetadata.download_url = None
 
 try:
-    longdesc = open("README.txt","r").read()
+    longdesc = open("README.rst","r").read()
 except Exception:
     longdesc = "Networking Library for Peng3d"
 
