@@ -207,6 +207,8 @@ class PingableClientMixin(object):
         
         By default, this sends a ping packet to the server.
         """
+        if self._pingdata["time"]=="__AUTO__":
+            self._pingdata["time"]=time.time()
         self.send_message(64,self._pingdata)
     
     def _pong(self,data):
@@ -257,7 +259,7 @@ def pingServer(peng=None,addr=None,cfg={},data={},clientcls=_PingClient,timeout=
     """
     client = clientcls(peng,addr,cfg,CONNTYPE_PING)
     
-    data["time"]=time.time()
+    data["time"]="__AUTO__"
     client.setPingData(data)
     
     # Needs this weird hack with a dictionary because of namespaces

@@ -47,8 +47,10 @@ else:
 
 try:
     import msgpack as msgpack
+    _MSGPACK_TYPE = "msgpack-python"
 except ImportError:
     import umsgpack as msgpack
+    _MSGPACK_TYPE = "umsgpack"
 
 try:
     import ssl
@@ -710,8 +712,11 @@ class Server(object):
                 if flags&FLAG_ENCRYPTED_AES:
                     raise NotImplementedError("Encryption not yet implemented")
                 
-                # Due to https://github.com/msgpack/msgpack-python/issues/99
-                msg = msgpack.unpackb(body,encoding="utf-8")
+                if _MSGPACK_TYPE=="msgpack-python":
+                    # Due to https://github.com/msgpack/msgpack-python/issues/99
+                    msg = msgpack.unpackb(body,encoding="utf-8")
+                else:
+                    msg = msgpack.unpackb(body)
                 
                 try:
                     client = self.clients[cid]
@@ -1422,8 +1427,11 @@ class Client(object):
                 if flags&FLAG_ENCRYPTED_AES:
                     raise NotImplementedError("Encryption not yet implemented")
                 
-                # Due to https://github.com/msgpack/msgpack-python/issues/99
-                msg = msgpack.unpackb(body,encoding="utf-8")
+                if _MSGPACK_TYPE=="msgpack-python":
+                    # Due to https://github.com/msgpack/msgpack-python/issues/99
+                    msg = msgpack.unpackb(body,encoding="utf-8")
+                else:
+                    msg = msgpack.unpackb(body)
                 
                 with self._process_lock:
                     # No error catching, for better debugging

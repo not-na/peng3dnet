@@ -38,7 +38,8 @@ class ClientOnChatServer(peng3dnet.net.ClientOnServer):
         print("Handshake with IP %s complete"%self.conn.getpeername()[0])
         #self.server.broadcast("User with IP Address %s joined the server"%(self.conn.getpeername()[0]),"server",internal=True,exclude_list=[self.cid])
     def on_close(self,reason=None):
-        self.server.broadcast("%s disconnected (%s)"%(getattr(self,"nickname","anonymous"),reason if reason is not None else "unknown"),"server",True)
+        if self.conntype=="classic":
+            self.server.broadcast("%s disconnected (%s)"%(getattr(self,"nickname","anonymous"),reason if reason is not None else "unknown"),"server",True)
 
 class ChatServer(peng3dnet.ext.ping.PingableServerMixin,peng3dnet.net.Server):
     def broadcast(self,msg,origin,internal=False,private=False,timestamp=None,exclude_list=[]):
