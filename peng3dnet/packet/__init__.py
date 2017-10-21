@@ -28,7 +28,7 @@ __all__ = [
     ]
 
 from ..constants import *
-from ..errors import *
+from .. import errors
 
 class Packet(object):
     """

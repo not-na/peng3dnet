@@ -42,7 +42,7 @@ class ClientOnChatServer(peng3dnet.net.ClientOnServer):
             self.server.broadcast("%s disconnected (%s)"%(getattr(self,"nickname","anonymous"),reason if reason is not None else "unknown"),"server",True)
 
 class ChatServer(peng3dnet.ext.ping.PingableServerMixin,peng3dnet.net.Server):
-    def broadcast(self,msg,origin,internal=False,private=False,timestamp=None,exclude_list=[]):
+    def broadcast(self,msg,origin,internal=False,private=False,timestamp=None,exclude_list=None):
         if not self.is_server:
             raise RuntimeError("Cannot broadcast from client")
         print("Message: %s"%msg)
@@ -54,7 +54,7 @@ class ChatServer(peng3dnet.ext.ping.PingableServerMixin,peng3dnet.net.Server):
             "timestamp":timestamp if timestamp is not None else time.time(),
             }
         for client in self.clients:
-            if client not in exclude_list:
+            if exclude_list is not None and client not in exclude_list:
                 self.send_message("chat:message",data,client)
     
     def getPingData(self,msg,cid):
@@ -84,6 +84,6 @@ def main(args):
     server.process_forever()
     
     return 0
+
 if __name__ == '__main__':
-    import sys
     sys.exit(main(sys.argv))

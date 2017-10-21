@@ -32,9 +32,7 @@ import time
 import threading
 
 from ..constants import *
-from .. import packet
 from .. import version
-from .. import util
 from .. import net
 from .. import errors
 from .. import conntypes
@@ -234,7 +232,7 @@ class PingableClientMixin(object):
 class _PingClient(PingableClientMixin,net.Client):
     pass
 
-def pingServer(peng=None,addr=None,cfg={},data={},clientcls=_PingClient,timeout=10.0):
+def pingServer(peng=None,addr=None,cfg=None,data=None,clientcls=_PingClient,timeout=10.0):
     """
     Pings the specified server.
     
@@ -257,6 +255,9 @@ def pingServer(peng=None,addr=None,cfg={},data={},clientcls=_PingClient,timeout=
     contains the timestamp that the response was received and the ``delay`` key
     contains the total roundtrip time in seconds.
     """
+    cfg = cfg if cfg is not None else {}
+    data = data if data is not None else {}
+    
     client = clientcls(peng,addr,cfg,CONNTYPE_PING)
     
     data["time"]="__AUTO__"

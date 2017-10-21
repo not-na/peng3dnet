@@ -174,7 +174,7 @@ class HandshakeAcceptPacket(SmartPacket):
     state = STATE_HANDSHAKE_WAIT1
     side = SIDE_SERVER
     invalid_action = "close"
-    def receive(self,msg,cid):
+    def receive(self,msg,cid=None):
         if msg["success"]:
             self.peer.clients[cid].on_handshake_complete()
     receive.__noautodoc__ = True

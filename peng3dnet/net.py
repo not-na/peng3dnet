@@ -126,7 +126,8 @@ class Server(object):
     
     ``cfg`` may be used to override initial configuration values and should be a dictionary.
     """
-    def __init__(self,peng=None,addr=None,clientcls=None,cfg={}):
+    def __init__(self,peng=None,addr=None,clientcls=None,cfg=None):
+        cfg = cfg if cfg is not None else {}
         if peng is None:
             self.cfg = peng3d.config.Config(cfg,DEFAULT_CONFIG)
         else:
@@ -748,12 +749,13 @@ class Server(object):
         self._process_thread.daemon = True
         self._process_thread.start()
     
-    def sendEvent(self,event,data={}):
+    def sendEvent(self,event,data=None):
         """
         Helper method used to send events.
         
         Checks if the event system is enabled, adds the ``peng`` and ``server`` data attributes and then sends it.
         """
+        data = data if data is not None else {}
         if self.cfg["net.events.enable"]:
             if isinstance(data,dict):
                 data["peng"]=self.peng
@@ -896,7 +898,8 @@ class Client(object):
     This should usually be :py:data:`~peng3dnet.constants.CONNTYPE_CLASSIC` or one of the other ``CONNTYPE_*`` constants.
     Note that the connection type specified must also be registered via :py:meth:`addConnType()`\ , except for the built-in connection types.
     """
-    def __init__(self,peng=None,addr=None,cfg={},conntype=CONNTYPE_CLASSIC):
+    def __init__(self,peng=None,addr=None,cfg=None,conntype=CONNTYPE_CLASSIC):
+        cfg = cfg if cfg is not None else {}
         if peng is None:
             self.cfg = peng3d.config.Config(cfg,DEFAULT_CONFIG)
         else:
@@ -1143,7 +1146,7 @@ class Client(object):
         self._irqsend.sendall(b"wake up!")
         self.sendEvent("peng3dnet:client.interrupt",{})
     
-    def join(self):
+    def join(self,timeout=None):
         """
         Waits for all spawned threads to finish.
         
@@ -1477,12 +1480,12 @@ class Client(object):
         with self._closed_condition:
             self._closed_condition.notify_all()
         try:
-            sock.close()
+            self.sock.close()
         except Exception:
             pass
         try:
             with self._selector_lock:
-                self.selector.unregister(sock)
+                self.selector.unregister(self.sock)
         except Exception:
             pass
         if self.remote_state!=STATE_CLOSED:
