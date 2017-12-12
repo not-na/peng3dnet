@@ -103,7 +103,7 @@ class ClassicConnectionType(ConnectionType):
     def init(self,cid):
         if cid is not None:
             self.peer.clients[cid].state = STATE_HANDSHAKE_WAIT1
-            self.peer.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.peer.registry.reg_int_str._inv)},cid)
+            self.peer.send_message("peng3dnet:internal.handshake",{"version":version.VERSION,"protoversion":version.PROTOVERSION,"registry":dict(self.peer.registry.reg_int_str.inv)},cid)
         elif cid is None:
             self.peer.remote_state = STATE_HANDSHAKE_WAIT1
     init.__noautodoc__ = True
