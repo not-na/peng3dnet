@@ -141,7 +141,7 @@ class HandshakePacket(SmartPacket):
         
         if self.peer.cfg["net.registry.autosync"]:
             # Sync registry
-            if msg["registry"].keys()!=self.peer.registry.reg_int_str._inv.keys():
+            if msg["registry"].keys()!=self.peer.registry.reg_int_str.inv.keys():
                 if self.peer.cfg["net.registry.missingpacketaction"]=="closeconnection":
                     self.peer.close_connection(cid,"packetregmismatch")
                     return
@@ -149,7 +149,7 @@ class HandshakePacket(SmartPacket):
                     pass
             
             for name,pid in msg["registry"].items():
-                if name in self.peer.registry.reg_int_str._inv:
+                if name in self.peer.registry.reg_int_str.inv:
                     obj = self.peer.registry.getObj(name)
                     opid = self.peer.registry.getInt(name)
                     
