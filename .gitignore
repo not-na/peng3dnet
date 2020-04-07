@@ -59,3 +59,5 @@ target/
 
 peng3dnet-py3\.5/
 peng3dnet-py3\.6/
+peng3dnet-py/
+.idea/

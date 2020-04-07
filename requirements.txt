@@ -1,16 +1,12 @@
 appdirs==1.4.3
-bidict==0.14.2
-# older versions of bidict are supported, but deprecated
-msgpack-python==0.4.8
-packaging==16.8
-pluggy==0.4.0
-py==1.4.33
-pyparsing==2.2.0
-pytest==3.0.7
-six==1.10.0
+bidict==0.19.0
+msgpack==1.0
+packaging==20.3
+py==1.8.1
+pyparsing==2.4.7
+pytest==5.4.1
 sphinx-rtd-theme==0.2.4
-tox==2.7.0
-virtualenv==15.1.0
-peng3d==1.8.0a1
-pyglet==1.2.4
+tox==3.14.6
+virtualenv==20.0.16
+peng3d==1.10.1
 peng3d-sphinxext==1.0.post1

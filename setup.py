@@ -69,7 +69,7 @@ setup(name='peng3dnet',
       setup_requires=['pytest-runner'],
       tests_require=['pytest'],
       classifiers=[
-        "Development Status :: 4 - Beta",
+        "Development Status :: 5 - Production/Stable",
         
         "Environment :: MacOS X",
         "Environment :: Win32 (MS Windows)",
@@ -89,12 +89,17 @@ setup(name='peng3dnet',
         "Programming Language :: Python :: 2.6",
         "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.3",
         "Programming Language :: Python :: 3.4",
+        "Programming Language :: Python :: 3.5",
+        "Programming Language :: Python :: 3.6",
+        "Programming Language :: Python :: 3.7",
         
         "Topic :: Communications",
         "Topic :: Internet",
+        "Topic :: Games/Entertainment",
+        "Topic :: Software Development :: Libraries",
         "Topic :: Software Development :: Libraries :: Python Modules",
+        "Topic :: System :: Networking",
         
         ],
       )

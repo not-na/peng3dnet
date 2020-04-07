@@ -476,7 +476,13 @@ class Server(object):
                     dat = ""
                 
             else:
-                dat = conn.recv(1024)
+                try:
+                    dat = conn.recv(1024)
+                except OSError:
+                    with self._selector_lock:
+                        self.selector.unregister(conn)
+                    data.close()
+                    return
             if dat:
                 # Non-empty
                 try:
@@ -497,7 +503,8 @@ class Server(object):
             try:
                 msg = data.write_queue.popleft()
             except IndexError:
-                self.selector.modify(conn,selectors.EVENT_READ,[self._client_ready,data])
+                with self._selector_lock:
+                    self.selector.modify(conn,selectors.EVENT_READ,[self._client_ready,data])
             else:
                 if self.cfg["net.ssl.enabled"]:
                     try:
@@ -514,7 +521,8 @@ class Server(object):
                 else:
                     conn.sendall(msg)
                 if len(data.write_queue)==0:
-                    self.selector.modify(conn,selectors.EVENT_READ,[self._client_ready,data])
+                    with self._selector_lock:
+                        self.selector.modify(conn,selectors.EVENT_READ,[self._client_ready,data])
             
             if data._mark_close and len(data.write_queue)==0:
                 with self._selector_lock:
@@ -623,10 +631,11 @@ class Server(object):
         data = prefix+data
         
         self.clients[cid].write_queue.append(data)
-        if not (self.selector.get_key(self.clients[cid].conn).events&selectors.EVENT_WRITE):
-            # Prevents unneccessary modification if nothing changes
-            self.selector.modify(self.clients[cid].conn,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._client_ready,self.clients[cid]])
-            self.interrupt() # forces the changes to apply
+        with self._selector_lock:
+            if not (self.selector.get_key(self.clients[cid].conn).events&selectors.EVENT_WRITE):
+                # Prevents unneccessary modification if nothing changes
+                self.selector.modify(self.clients[cid].conn,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._client_ready,self.clients[cid]])
+                self.interrupt() # forces the changes to apply
         
         if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,basestring) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.clients[cid].conntype].send(data,ptype,cid):
             self.clients[cid].on_send(ptype,data)
@@ -704,7 +713,7 @@ class Server(object):
                 pid,flags = STRUCT_HEADER.unpack(header)
                 
                 if self.cfg["net.debug.print.recv"] and (pid<64 or self.clients[cid].conntype == CONNTYPE_CLASSIC):
-                    print("RECV %s"%self.registry.getStr(pid))
+                    print("RECV %s %s"%(self.registry.getStr(pid), time.time()))
                 
                 if flags&FLAG_COMPRESSED:
                     olen = len(body)
@@ -712,12 +721,8 @@ class Server(object):
                     #print("Received compressed packet, compressed %sb uncompressed %sb, rate %.2f%%"%(olen,len(body),(olen/len(body))*100))
                 if flags&FLAG_ENCRYPTED_AES:
                     raise NotImplementedError("Encryption not yet implemented")
-                
-                if _MSGPACK_TYPE=="msgpack-python":
-                    # Due to https://github.com/msgpack/msgpack-python/issues/99
-                    msg = msgpack.unpackb(body,encoding="utf-8")
-                else:
-                    msg = msgpack.unpackb(body)
+
+                msg = msgpack.unpackb(body)
                 
                 try:
                     client = self.clients[cid]
@@ -1288,7 +1293,7 @@ class Client(object):
                     # Will be in read mode
                     bytes_sent = 0
             else:
-                bytes_sent = self.sock.send(self._write_buf,socket.MSG_DONTWAIT)
+                bytes_sent = self.sock.send(self._write_buf)
             self._write_buf = self._write_buf[bytes_sent:]
             if len(self._write_buf)==0:
                 if self._mark_close:
@@ -1429,12 +1434,8 @@ class Client(object):
                     body = zlib.decompress(body)
                 if flags&FLAG_ENCRYPTED_AES:
                     raise NotImplementedError("Encryption not yet implemented")
-                
-                if _MSGPACK_TYPE=="msgpack-python":
-                    # Due to https://github.com/msgpack/msgpack-python/issues/99
-                    msg = msgpack.unpackb(body,encoding="utf-8")
-                else:
-                    msg = msgpack.unpackb(body)
+
+                msg = msgpack.unpackb(body)
                 
                 with self._process_lock:
                     # No error catching, for better debugging

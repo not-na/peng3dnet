@@ -25,7 +25,7 @@
 
 __all__ = ["VERSION","RELEASE","PROTOVERSION"]
 
-VERSION = "0.1.2a1"
+VERSION = "0.1.3a0"
 """
 Full version number of this package.
 
@@ -36,7 +36,7 @@ Full version number of this package.
    The ``a`` meta-data indicates bit-compatible versions that only fix documentation mistakes etc.
 """
 
-RELEASE = "0.1.2"
+RELEASE = "0.1.3"
 """
 Full version number of this package without trailing meta-data.
 

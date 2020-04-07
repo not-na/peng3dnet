@@ -229,7 +229,7 @@ master_doc = 'index'
 
 # General information about the project.
 project = u'Peng3dnet'
-copyright = u'2017, notna'
+copyright = u'2017-2020, notna'
 author = u'notna'
 
 # The version info for the project you're documenting, acts as replacement for
