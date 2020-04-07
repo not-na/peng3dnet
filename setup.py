@@ -24,6 +24,10 @@
 
 # Distribution command:
 # sudo python setup.py install sdist bdist register upload
+# NEW:
+# python setup.py sdist bdist bdist_egg bdist_wheel
+# outside venv:
+# twine upload dist/*
 
 import imp
 

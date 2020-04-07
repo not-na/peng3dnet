@@ -23,4 +23,4 @@
 #  
 
 from . import ping
-
+from . import mpgame

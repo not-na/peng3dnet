@@ -204,15 +204,6 @@ extensions = [
     "peng3d_sphinxext",
 ]
 
-try:
-    import pip
-    installed_packages = pip.get_installed_distributions()
-    flat_installed_packages = [package.project_name for package in installed_packages]
-    if "sphinxcontrib-spelling" in flat_installed_packages and "pyenchant" in flat_installed_packages:
-        extensions.append("sphinxcontrib.spelling")
-except ImportError:
-    pass # May happen if pip is not installed
-
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']
 
