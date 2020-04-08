@@ -118,6 +118,9 @@ class SetTypePacket(SmartPacket):
         self.peer.clients[cid].conntype = t
         self.peer.conntypes[t].init(cid)
     receive.__noautodoc__ = True
+    def send(self, msg, cid=None):
+        self.peer.conntype = self.peer.target_conntype
+    send.__noautodoc__ = True
 
 class HandshakePacket(SmartPacket):
     """
