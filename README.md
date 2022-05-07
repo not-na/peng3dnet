@@ -1,6 +1,5 @@
 # `peng3dnet` - Networking Library for `peng3d`
 
-[![CircleCI](https://img.shields.io/circleci/project/github/not-na/peng3dnet.svg)](https://circleci.com/gh/not-na/peng3dnet)
 [![Documentation Status](https://readthedocs.org/projects/peng3dnet/badge/?version=latest)](https://peng3dnet.readthedocs.io/en/latest/?badge=latest)
 
 `peng3dnet` is a TCP-Based networking Library designed for use with [peng3d](https://github.com/not-na/peng3d).

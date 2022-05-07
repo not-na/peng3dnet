@@ -3,7 +3,7 @@
 #
 #  version.py
 #  
-#  Copyright 2017 notna <notna@apparat.org>
+#  Copyright 2017-2022 notna <notna@apparat.org>
 #  
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -25,18 +25,18 @@
 
 __all__ = ["VERSION","RELEASE","PROTOVERSION"]
 
-VERSION = "0.1.3a0"
+VERSION = "0.2.0"
 """
 Full version number of this package.
+
+Used to display the version in the title of the documentation and in ``setup.py``\\ .
 
 .. seealso::
    
    See `Semantic Versioning <http://semver.org>`_ for more information on the scheme used by this application.
-   
-   The ``a`` meta-data indicates bit-compatible versions that only fix documentation mistakes etc.
 """
 
-RELEASE = "0.1.3"
+RELEASE = "0.2.0"
 """
 Full version number of this package without trailing meta-data.
 

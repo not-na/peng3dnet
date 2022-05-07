@@ -10,9 +10,6 @@ Welcome to Peng3dnet's documentation!
    :target: http://peng3dnet.readthedocs.io/en/latest/?badge=latest
    :alt: Documentation Status
 
-.. image:: https://circleci.com/gh/not-na/peng3dnet.svg?style=svg
-    :target: https://circleci.com/gh/not-na/peng3dnet
-
 .. image:: https://img.shields.io/pypi/dm/peng3dnet.svg
    :target: https://pypi.python.org/pypi/peng3dnet
 

@@ -3,7 +3,7 @@
 #
 #  setup.py
 #  
-#  Copyright 2017 notna <notna@apparat.org>
+#  Copyright 2017-2022 notna <notna@apparat.org>
 #  
 #  This program is free software; you can redistribute it and/or modify
 #  it under the terms of the GNU General Public License as published by
@@ -23,81 +23,60 @@
 #  
 
 # Distribution command:
-# sudo python setup.py install sdist bdist register upload
-# NEW:
 # python setup.py sdist bdist bdist_egg bdist_wheel
 # outside venv:
 # twine upload dist/*
 
-import imp
+import os
+import runpy
 
-def load_module(name):
-    names = name.split(".")
-    path = None
-    for name in names:
-        f, path, info = imp.find_module(name, path)
-        path = [path]
-    return imp.load_module(name, f, path[0], info)    
-
-ver = load_module("peng3dnet.version")
+ver = runpy.run_path(os.path.join("peng3dnet", "version.py"))
 
 try:
     from setuptools import setup
 except ImportError:
     from distutils.core import setup
 
-# Fix for very old python versions from https://docs.python.org/2/distutils/setupscript.html#additional-meta-data
-# patch distutils if it can't cope with the "classifiers" or
-# "download_url" keywords
-from sys import version
-if version < '2.2.3':
-    from distutils.dist import DistributionMetadata
-    DistributionMetadata.classifiers = None
-    DistributionMetadata.download_url = None
-
 try:
-    longdesc = open("README.rst","r").read()
+    longdesc = open("README.rst", "r").read()
 except Exception:
     longdesc = "Networking Library for Peng3d"
 
 setup(name='peng3dnet',
-      version=ver.VERSION,
+      version=ver["VERSION"],
       description="Networking Library for Peng3d", # from the github repo
       long_description=longdesc,
       author="notna",
-      author_email="notna@apparat.org",
+      author_email="notna+gh@apparat.org",
       url="https://github.com/not-na/peng3dnet",
       packages=['peng3dnet',"peng3dnet.packet","peng3dnet.ext"],
-      requires=["msgpack","bidict"],
+      install_requires=["msgpack~=1.0.0","bidict>=0.19.0"],
       provides=["peng3dnet"],
       setup_requires=['pytest-runner'],
       tests_require=['pytest'],
       classifiers=[
         "Development Status :: 5 - Production/Stable",
-        
+
         "Environment :: MacOS X",
         "Environment :: Win32 (MS Windows)",
         "Environment :: X11 Applications",
-        
+
         "Intended Audience :: Developers",
         "Intended Audience :: Information Technology",
         "Intended Audience :: Telecommunications Industry",
-        
+
         "License :: OSI Approved",
         "License :: OSI Approved :: GNU General Public License v2 or later (GPLv2+)",
-        
+
         "Operating System :: OS Independent",
-        
+
         "Programming Language :: Python",
-        "Programming Language :: Python :: 2",
-        "Programming Language :: Python :: 2.6",
-        "Programming Language :: Python :: 2.7",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.4",
-        "Programming Language :: Python :: 3.5",
-        "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
-        
+        "Programming Language :: Python :: 3.8",
+        "Programming Language :: Python :: 3.9",
+        "Programming Language :: Python :: 3.10",
+
         "Topic :: Communications",
         "Topic :: Internet",
         "Topic :: Games/Entertainment",
