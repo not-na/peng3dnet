@@ -33,17 +33,12 @@ import time
 import struct
 import threading
 import socket
+import queue
 import selectors
 import warnings
 import collections
 import zlib
 
-if sys.version_info.major==2:
-    import Queue
-elif sys.version_info.major==3:
-    import queue as Queue
-else:
-    raise ValueError("Python version %s is not supported"%sys.version) # for old python 1.x or python 4.x if that happens to ever exist
 
 try:
     import msgpack as msgpack
@@ -84,21 +79,6 @@ STRUCT_LENGTH32 = struct.Struct(STRUCT_FORMAT_LENGTH32)
    See :py:data:`peng3dnet.constants.STRUCT_FORMAT_LENGTH32` for more information.
 """
 
-# Code from https://github.com/oxplot/fysom/issues/1
-try:
-    unicode = unicode
-except NameError:
-    # 'unicode' is undefined, must be Python 3
-    str = str
-    unicode = str
-    bytes = bytes
-    basestring = (str,bytes)
-else:
-    # 'unicode' exists, must be Python 2
-    str = str
-    unicode = unicode
-    bytes = str
-    basestring = basestring
 
 class Server(object):
     """
@@ -180,7 +160,7 @@ class Server(object):
         self._run_thread = None
         self._process_thread = None
         
-        self._process_queue = Queue.Queue()
+        self._process_queue = queue.Queue()
         self._process_condition = threading.Condition()
         
         self.run = True
@@ -637,7 +617,7 @@ class Server(object):
                 self.selector.modify(self.clients[cid].conn,selectors.EVENT_READ|selectors.EVENT_WRITE,[self._client_ready,self.clients[cid]])
                 self.interrupt() # forces the changes to apply
         
-        if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,basestring) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.clients[cid].conntype].send(data,ptype,cid):
+        if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,str) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.clients[cid].conntype].send(data,ptype,cid):
             self.clients[cid].on_send(ptype,data)
             self.sendEvent("peng3dnet:server.connection.send",{"client":self.clients[cid],"pid":ptype,"data":data})
             self.registry.getObj(ptype)._send(data,cid)
@@ -704,7 +684,7 @@ class Server(object):
         while not (self._process_queue.empty()):
             try:
                 cid,data = self._process_queue.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 break # may happen rarely
             else:
                 # Pre-process
@@ -941,7 +921,7 @@ class Client(object):
         
         self._process_lock = threading.Lock()
         
-        self._process_queue = Queue.Queue()
+        self._process_queue = queue.Queue()
         self._process_condition = threading.Condition()
         
         self._connected_condition = threading.Condition()
@@ -1246,7 +1226,7 @@ class Client(object):
         """
         if self.cfg["net.debug.print.send"]:
             print("SEND %s"%ptype)
-        if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,basestring) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.target_conntype].send(data,ptype,cid):
+        if (isinstance(ptype,int) and ptype<64) or (isinstance(ptype,str) and ptype.startswith("peng3dnet:")) or not self.conntypes[self.target_conntype].send(data,ptype,cid):
             self.on_send(ptype,data)
             self.sendEvent("peng3dnet:client.send",{"pid":ptype,"data":data})
             self.registry.getObj(ptype)._send(data)
@@ -1421,7 +1401,7 @@ class Client(object):
         while not (self._process_queue.empty()):
             try:
                 _,data = self._process_queue.get_nowait()
-            except Queue.Empty:
+            except queue.Empty:
                 break # may happen rarely
             else:
                 header,body = data[:STRUCT_HEADER.size],data[STRUCT_HEADER.size:]
